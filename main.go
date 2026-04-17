@@ -5,7 +5,20 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+
+	"gopkg.in/yaml.v3"
 )
+
+type Profile struct {
+	Windows []struct {
+		Name     *string  `yaml:"name,omitempty"`
+		Commands []string `yaml:"commands"`
+	} `yaml:"windows"`
+}
+
+type Config struct {
+	Profiles map[string]Profile `yaml:"profiles"`
+}
 
 func execTmuxCommand(args []string) ([]byte, error) {
 	var output bytes.Buffer
@@ -46,6 +59,26 @@ func deleteSession(sessionName string) error {
 	return nil
 }
 
+func startProfile(name string, data Profile) error {
+	return nil
+}
+
+func readConfig(filename string) (*Config, error) {
+	var config Config
+
+	data, err := os.ReadFile("config.yaml")
+
+	if err != nil {
+		return nil, fmt.Errorf("read config: %v", err)
+	}
+
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("unmarshal config: %v", err)
+	}
+
+	return &config, nil
+}
+
 func main() {
 	defer func() {
 		if err := deleteSession("testsession"); err != nil {
@@ -54,6 +87,19 @@ func main() {
 			fmt.Printf("Session 'testsession' deleted successfully.\n")
 		}
 	}()
+
+	config, err := readConfig("config.yaml")
+
+	if err != nil {
+		panic(err)
+	}
+
+	for profileName, data := range config.Profiles {
+		if err := startProfile(profileName, data); err != nil {
+			fmt.Printf("Failed to start profile: %v\n", err)
+			os.Exit(1)
+		}
+	}
 
 	var commands = [][]string{
 		{"new-session", "-d", "-s", "testsession"},

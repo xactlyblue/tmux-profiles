@@ -1,0 +1,9 @@
+profiles:
+  frontend:
+    windows:
+      - name: editor
+        commands:
+          - nvim
+      - name: runtime 
+        commands:
+          - 
