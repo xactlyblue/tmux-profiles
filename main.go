@@ -7,8 +7,7 @@ import (
 	"os/exec"
 )
 
-func execTmuxCommand(args ...string) ([]byte, error) {
-	// var stdout, stderr bytes.Buffer
+func execTmuxCommand(args []string) ([]byte, error) {
 	var output bytes.Buffer
 
 	cmd := exec.Command("tmux", args...)
@@ -26,11 +25,48 @@ func execTmuxCommand(args ...string) ([]byte, error) {
 	return output.Bytes(), nil
 }
 
+func attachSession(sessionName string) error {
+	cmd := exec.Command("tmux", "attach-session", "-t", sessionName)
+
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("attach session: %v", err)
+	}
+
+	return nil
+}
+
+func deleteSession(sessionName string) error {
+	if _, err := execTmuxCommand([]string{"kill-session", "-t", sessionName}); err != nil {
+		return fmt.Errorf("delete session: %v", err)
+	}
+	return nil
+}
+
 func main() {
-	if _, err := execTmuxCommand("new", "-d", "-s", "testsession"); err != nil {
-		fmt.Printf("Failed to run tmux: %v\n", err)
-		os.Exit(1)
-	} else {
-		fmt.Printf("Created new TMUX session\n")
+	defer func() {
+		if err := deleteSession("testsession"); err != nil {
+			fmt.Printf("Error deleting session: %v\n", err)
+		} else {
+			fmt.Printf("Session 'testsession' deleted successfully.\n")
+		}
+	}()
+
+	var commands = [][]string{
+		{"new-session", "-d", "-s", "testsession"},
+		{"send-keys", "-t", "testsession:1", "'nvim'", "Enter"},
+	}
+
+	for _, args := range commands {
+		if _, err := execTmuxCommand(args); err != nil {
+			panic(err)
+		}
+	}
+
+	if err := attachSession("testsession"); err != nil {
+		panic(err)
 	}
 }
