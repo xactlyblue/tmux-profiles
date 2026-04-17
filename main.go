@@ -5,16 +5,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"text/template"
 
 	"github.com/google/shlex"
 
 	"gopkg.in/yaml.v3"
-)
-
-const (
-	defaultConfigPath = "$HOME/.config/tmux-profiles/config.yaml"
 )
 
 type Profile struct {
@@ -31,6 +28,16 @@ type Config struct {
 type CommandData struct {
 	Session string
 	Window  string
+}
+
+func getDefaultConfigPath() (string, error) {
+	configDir, err := os.UserConfigDir()
+
+    if err != nil {
+        return "", fmt.Errorf("finding config dir: %w", err)
+    }
+
+	return filepath.Join(configDir, "tmux-profiles", "config.yaml"), nil
 }
 
 func execCommand(args []string) ([]byte, error) {
@@ -151,7 +158,7 @@ func startProfile(name string, data Profile) (err error) {
 	return nil
 }
 
-func readConfig(filename string) (*Config, error) {
+func loadConfig(filename string) (*Config, error) {
 	var config Config
 
 	data, err := os.ReadFile(filename)
@@ -168,22 +175,39 @@ func readConfig(filename string) (*Config, error) {
 }
 
 func main() {
+	programName := os.Args[0]
+
+	if len(os.Args) < 2 {
+		fmt.Fprintf(os.Stderr, "Usage: %s <profile>\n", programName)
+		os.Exit(1)
+	}
+
 	profileName := os.Args[1]
 
 	path := os.Getenv("TMUX_PROFILES_PATH")
 
 	if len(path) == 0 {
-		// TODO: Search multiple paths
-		path = defaultConfigPath
+		var err error
+
+		if path, err = getDefaultConfigPath(); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get default config path: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
-	config, err := readConfig(path)
+	config, err := loadConfig(path)
 
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+		os.Exit(1)
 	}
 
-	profile := config.Profiles[profileName]
+	profile, ok := config.Profiles[profileName]
+
+	if !ok {
+		fmt.Fprintf(os.Stderr, "Profile %q not found in config\n", profileName)
+		os.Exit(1)
+	}
 
 	if err := startProfile(profileName, profile); err != nil {
 		fmt.Printf("Failed to start profile: %v\n", err)
