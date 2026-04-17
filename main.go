@@ -13,6 +13,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	defaultConfigPath = "$HOME/.config/tmux-profiles/config.yaml"
+)
+
 type Profile struct {
 	Windows []struct {
 		Name     string   `yaml:"name,omitempty"`
@@ -131,7 +135,6 @@ func startProfile(name string, data Profile) (err error) {
 					return fmt.Errorf("exec template: %v", err)
 				}
 
-				// fmt.Printf("Final argument: %s\n", buff.String())
 				parsedArgs[i] = buff.String()
 			}
 
@@ -167,7 +170,14 @@ func readConfig(filename string) (*Config, error) {
 func main() {
 	profileName := os.Args[1]
 
-	config, err := readConfig("config.yaml")
+	path := os.Getenv("TMUX_PROFILES_PATH")
+
+	if len(path) == 0 {
+		// TODO: Search multiple paths
+		path = defaultConfigPath
+	}
+
+	config, err := readConfig(path)
 
 	if err != nil {
 		panic(err)
