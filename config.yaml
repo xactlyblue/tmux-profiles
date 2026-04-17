@@ -6,3 +6,4 @@ profiles:
           - "send-keys -t {{.Session}}:{{.Window}} 'nvim' Enter"
       - name: runtime 
         commands:
+          - "send-keys -t {{.Session}}:{{.Window}} 'pnpm dev' Enter"
