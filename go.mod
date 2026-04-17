@@ -2,4 +2,7 @@ module github.com/xactlyblue/tmux-profiles
 
 go 1.25.6
 
-require gopkg.in/yaml.v3 v3.0.1 // indirect
+require (
+	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
+)

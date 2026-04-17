@@ -3,7 +3,6 @@ profiles:
     windows:
       - name: editor
         commands:
-          - nvim
+          - "send-keys -t {{.Session}}:{{.Window}} 'nvim' Enter"
       - name: runtime 
         commands:
-          - 

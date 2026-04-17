@@ -5,13 +5,17 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
+	"text/template"
+
+	"github.com/google/shlex"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Profile struct {
 	Windows []struct {
-		Name     *string  `yaml:"name,omitempty"`
+		Name     string   `yaml:"name,omitempty"`
 		Commands []string `yaml:"commands"`
 	} `yaml:"windows"`
 }
@@ -20,7 +24,12 @@ type Config struct {
 	Profiles map[string]Profile `yaml:"profiles"`
 }
 
-func execTmuxCommand(args []string) ([]byte, error) {
+type CommandData struct {
+	Session string
+	Window  string
+}
+
+func execCommand(args []string) ([]byte, error) {
 	var output bytes.Buffer
 
 	cmd := exec.Command("tmux", args...)
@@ -53,20 +62,96 @@ func attachSession(sessionName string) error {
 }
 
 func deleteSession(sessionName string) error {
-	if _, err := execTmuxCommand([]string{"kill-session", "-t", sessionName}); err != nil {
+	if _, err := execCommand([]string{"kill-session", "-t", sessionName}); err != nil {
 		return fmt.Errorf("delete session: %v", err)
 	}
 	return nil
 }
 
-func startProfile(name string, data Profile) error {
+func startProfile(name string, data Profile) (err error) {
+	defer func() {
+		if err == nil {
+			return
+		}
+
+		if err := deleteSession(name); err != nil {
+			fmt.Printf("Failed to automatically delete session: %v\n", err)
+		} else {
+			fmt.Printf("Automatically deleted session %q due to error\n", name)
+		}
+	}()
+
+	if _, err := execCommand([]string{"new-session", "-d", "-s", name}); err != nil {
+		return fmt.Errorf("new session: %v", err)
+	}
+
+	for i, w := range data.Windows {
+		var wn string
+
+		if len(w.Name) > 0 {
+			wn = w.Name
+		} else {
+			wn = strconv.Itoa(i + 1)
+		}
+
+		if i > 0 {
+			if _, err := execCommand([]string{"new-window", "-d", "-t", name, "-n", wn}); err != nil {
+				return fmt.Errorf("new window: %v", err)
+			}
+		} else {
+			if _, err := execCommand([]string{"rename-window", "-t", fmt.Sprintf("%s:1", name), wn}); err != nil {
+				return fmt.Errorf("rename window: %v", err)
+			}
+		}
+
+		cd := CommandData{
+			Session: name,
+			Window:  wn,
+		}
+
+		for _, command := range w.Commands {
+			args, err := shlex.Split(command)
+
+			if err != nil {
+				return fmt.Errorf("parse args: %v", err)
+			}
+
+			parsedArgs := make([]string, len(args))
+
+			for i, a := range args {
+				tmpl, err := template.New("command").Parse(a)
+
+				if err != nil {
+					return fmt.Errorf("new template: %v", err)
+				}
+
+				buff := &bytes.Buffer{}
+
+				if err := tmpl.Execute(buff, &cd); err != nil {
+					return fmt.Errorf("exec template: %v", err)
+				}
+
+				// fmt.Printf("Final argument: %s\n", buff.String())
+				parsedArgs[i] = buff.String()
+			}
+
+			if _, err := execCommand(parsedArgs); err != nil {
+				return fmt.Errorf("exec command: %v", err)
+			}
+		}
+	}
+
+	if err := attachSession(name); err != nil {
+		return fmt.Errorf("attach session")
+	}
+
 	return nil
 }
 
 func readConfig(filename string) (*Config, error) {
 	var config Config
 
-	data, err := os.ReadFile("config.yaml")
+	data, err := os.ReadFile(filename)
 
 	if err != nil {
 		return nil, fmt.Errorf("read config: %v", err)
@@ -80,13 +165,7 @@ func readConfig(filename string) (*Config, error) {
 }
 
 func main() {
-	defer func() {
-		if err := deleteSession("testsession"); err != nil {
-			fmt.Printf("Error deleting session: %v\n", err)
-		} else {
-			fmt.Printf("Session 'testsession' deleted successfully.\n")
-		}
-	}()
+	profileName := os.Args[1]
 
 	config, err := readConfig("config.yaml")
 
@@ -94,25 +173,10 @@ func main() {
 		panic(err)
 	}
 
-	for profileName, data := range config.Profiles {
-		if err := startProfile(profileName, data); err != nil {
-			fmt.Printf("Failed to start profile: %v\n", err)
-			os.Exit(1)
-		}
-	}
+	profile := config.Profiles[profileName]
 
-	var commands = [][]string{
-		{"new-session", "-d", "-s", "testsession"},
-		{"send-keys", "-t", "testsession:1", "'nvim'", "Enter"},
-	}
-
-	for _, args := range commands {
-		if _, err := execTmuxCommand(args); err != nil {
-			panic(err)
-		}
-	}
-
-	if err := attachSession("testsession"); err != nil {
-		panic(err)
+	if err := startProfile(profileName, profile); err != nil {
+		fmt.Printf("Failed to start profile: %v\n", err)
+		os.Exit(1)
 	}
 }
